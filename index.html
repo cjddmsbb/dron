@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>드론 코딩 보물찾기</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1e222b;
+    --surface-3: #262b36;
+    --line: rgba(255, 255, 255, 0.08);
+    --line-strong: rgba(255, 255, 255, 0.14);
+    --text: #f3f5f8;
+    --text-muted: #a9b1c0;
+    --text-faint: #6c7486;
+    --accent: #10b981;
+    --accent-hover: #0ea371;
+    --accent-soft: rgba(16, 185, 129, 0.14);
+    --treasure: #f5b400;
+    --danger: #f05252;
+    --info: #3b82f6;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --cell-gap: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100dvh; }
+  body {
+    font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans KR", sans-serif;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, rgba(59, 130, 246, 0.08), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .app { max-width: 1180px; margin: 0 auto; padding: 20px 20px 48px; }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 8px 0 20px; }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand .logo { width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); }
+  .brand h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+  .brand p { margin: 2px 0 0; font-size: 13px; color: var(--text-muted); }
+  .stats { display: flex; gap: 10px; flex-wrap: wrap; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 14px; min-width: 78px; text-align: center; }
+  .stat .k { font-size: 11px; color: var(--text-faint); letter-spacing: 0.02em; }
+  .stat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat.level .v { color: var(--accent); }
+  .stat.treasure .v { color: var(--treasure); }
+  .board-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 18px; align-items: start; }
+  @media (max-width: 860px) { .board-grid { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .panel-head h2 { font-size: 15px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .panel-head h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .panel-head .hint { font-size: 12px; color: var(--text-faint); }
+  .stage { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px; }
+  .grid { display: grid; gap: var(--cell-gap); width: 100%; aspect-ratio: 1 / 1; max-width: 480px; margin: 0 auto; }
+  .cell { position: relative; background: var(--surface-3); border-radius: 10px; display: grid; place-items: center; overflow: hidden; transition: background 150ms ease; }
+  .cell::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03); pointer-events: none; }
+  .cell.start { background: rgba(59, 130, 246, 0.12); }
+  .cell.goal  { background: rgba(245, 180, 0, 0.12); }
+  .cell.wall  { background: #3a2f28; }
+  .cell.path-trail { background: var(--accent-soft); }
+  .cell svg { width: 68%; height: 68%; display: block; }
+  .drone { position: absolute; z-index: 5; display: grid; place-items: center; transition: left 320ms cubic-bezier(.34,1.3,.5,1), top 320ms cubic-bezier(.34,1.3,.5,1), transform 300ms cubic-bezier(.34,1.3,.5,1); filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45)); pointer-events: none; }
+  .drone svg { width: 100%; height: 100%; }
+  .drone.bump { animation: bump 380ms ease; }
+  @keyframes bump { 0%,100% { filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45)); } 30% { transform: translateX(var(--bx,0)) translateY(var(--by,0)) rotate(var(--rot,0deg)) scale(.9); } }
+  .drone.win { animation: win 700ms ease; }
+  @keyframes win { 0%,100% { } 40% { transform: translateY(-10px) rotate(var(--rot,0deg)) scale(1.12); } }
+  .treasure-pop { position: absolute; z-index: 6; pointer-events: none; animation: pop 700ms ease forwards; }
+  @keyframes pop { 0% { transform: scale(.4); opacity: 0; } 40% { transform: scale(1.25); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  .toolbox { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .block-btn { appearance: none; cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); border-radius: 12px; padding: 10px 12px 10px 10px; font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px; transition: transform 120ms ease, background 120ms ease, border-color 120ms ease; user-select: none; }
+  .block-btn:hover { background: var(--surface-3); border-color: var(--accent); }
+  .block-btn:active { transform: scale(.96); }
+  .block-btn .ic { width: 26px; height: 26px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+  .block-btn .ic svg { width: 18px; height: 18px; }
+  .block-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .ic.fwd   { background: var(--accent); }
+  .ic.left  { background: #8b5cf6; }
+  .ic.right { background: #ec4899; }
+  .ic.loop  { background: var(--info); }
+  .program { background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 12px; min-height: 180px; display: flex; flex-direction: column; gap: 8px; }
+  .program.empty-state { align-items: center; justify-content: center; }
+  .program .placeholder { color: var(--text-faint); font-size: 13px; text-align: center; line-height: 1.6; }
+  .prog-item { display: flex; align-items: center; gap: 10px; background: var(--surface-3); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; animation: slideIn 200ms ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+  .prog-item.running { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .prog-item .num { width: 24px; height: 24px; flex-shrink: 0; border-radius: 7px; background: var(--surface); color: var(--text-muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; display: grid; place-items: center; }
+  .prog-item .ic { width: 28px; height: 28px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+  .prog-item .ic svg { width: 18px; height: 18px; }
+  .prog-item .label { font-size: 14px; font-weight: 500; flex: 1; min-width: 0; }
+  .prog-item .loop-count { display: inline-flex; align-items: center; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .prog-item .loop-count button { appearance: none; border: 0; background: transparent; color: var(--text); width: 26px; height: 28px; cursor: pointer; font-size: 16px; line-height: 1; }
+  .prog-item .loop-count button:hover { background: var(--surface-3); }
+  .prog-item .loop-count .n { min-width: 20px; text-align: center; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .prog-item .remove { appearance: none; border: 0; background: transparent; color: var(--text-faint); cursor: pointer; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+  .prog-item .remove:hover { background: rgba(240, 82, 82, 0.15); color: var(--danger); }
+  .prog-item .remove svg { width: 15px; height: 15px; }
+  .controls { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn { appearance: none; cursor: pointer; border-radius: 12px; padding: 12px 18px; font-size: 15px; font-weight: 600; border: 1px solid transparent; display: inline-flex; align-items: center; gap: 8px; transition: transform 120ms ease, background 120ms ease, opacity 120ms ease; }
+  .btn:active { transform: scale(.97); }
+  .btn svg { width: 18px; height: 18px; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary { background: var(--accent); color: #04140d; flex: 1; justify-content: center; min-width: 140px; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn.secondary { background: var(--surface-2); color: var(--text); border-color: var(--line-strong); }
+  .btn.secondary:hover { background: var(--surface-3); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+  .message { margin-top: 14px; border-radius: var(--radius-sm); padding: 12px 14px; font-size: 14px; font-weight: 500; display: none; align-items: center; gap: 10px; animation: slideIn 220ms ease; }
+  .message.show { display: flex; }
+  .message svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .message.success { background: var(--accent-soft); color: #6ee7b7; border: 1px solid rgba(16,185,129,.3); }
+  .message.error   { background: rgba(240,82,82,.12); color: #fca5a5; border: 1px solid rgba(240,82,82,.3); }
+  .message.info    { background: rgba(59,130,246,.12); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .chip { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; }
+  .legend .chip svg { width: 15px; height: 15px; }
+  .toolbar-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--text-faint); }
+  .heading-dir { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+  .heading-dir svg { width: 14px; height: 14px; color: var(--info); transition: transform 300ms ease; }
+  .confetti { position: fixed; top: -12px; width: 10px; height: 14px; z-index: 50; pointer-events: none; border-radius: 2px; }
+  @keyframes fall { to { transform: translateY(105vh) rotate(720deg); opacity: .9; } }
+  @media (prefers-reduced-motion: reduce) {
+    .drone, .cell, .heading-dir svg { transition: none !important; }
+    .drone.bump, .drone.win, .prog-item, .message, .treasure-pop { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="6" r="2.2"/>
+          <circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="18" r="2.2"/>
+          <rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/>
+          <path d="M8 8 l1.6 1.6 M16 8 l-1.6 1.6 M8 16 l1.6-1.6 M16 16 l-1.6-1.6"/>
+        </svg>
+      </div>
+      <div>
+        <h1>드론 코딩 보물찾기</h1>
+        <p>명령 블록을 쌓아서 드론을 보물까지 조종해 보세요!</p>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat level"><div class="k">레벨</div><div class="v" id="statLevel">1</div></div>
+      <div class="stat treasure"><div class="k">찾은 보물</div><div class="v" id="statTreasure">0</div></div>
+      <div class="stat"><div class="k">도전 횟수</div><div class="v" id="statTries">0</div></div>
+    </div>
+  </header>
+  <div class="board-grid">
+    <section class="panel" aria-label="게임 보드">
+      <div class="panel-head">
+        <h2><span class="dot"></span>미션 보드</h2>
+        <div class="heading-dir" title="드론이 바라보는 방향">
+          <svg id="headingArrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+          <span id="headingText">위쪽</span>
+        </div>
+      </div>
+      <div class="stage"><div class="grid" id="grid"></div></div>
+      <div class="legend" aria-hidden="true">
+        <span><span class="chip" style="background:rgba(59,130,246,.18)"><svg viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="1.6"/><circle cx="18" cy="6" r="1.6"/><circle cx="6" cy="18" r="1.6"/><circle cx="18" cy="18" r="1.6"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg></span>드론(출발)</span>
+        <span><span class="chip" style="background:rgba(245,180,0,.18)"><svg viewBox="0 0 24 24" fill="#f5b400" stroke="#f5b400" stroke-width="1" stroke-linejoin="round"><path d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.9 6.2 20.9l1.1-6.47L2.6 9.85l6.5-.95z"/></svg></span>보물</span>
+        <span><span class="chip" style="background:#3a2f28"><svg viewBox="0 0 24 24" fill="none" stroke="#c9a37a" stroke-width="1.6"><rect x="3" y="5" width="18" height="5" rx="1"/><rect x="3" y="14" width="18" height="5" rx="1"/><path d="M8 5v5M15 5v5M11 14v5"/></svg></span>장애물(벽)</span>
+      </div>
+    </section>
+    <section class="panel" aria-label="명령 프로그램">
+      <div class="panel-head">
+        <h2><span class="dot" style="background:var(--info)"></span>내 알고리즘</h2>
+        <div class="hint">블록을 눌러 추가하세요</div>
+      </div>
+      <div class="toolbox">
+        <button class="block-btn" data-add="forward"><span class="ic fwd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg></span>앞으로</button>
+        <button class="block-btn" data-add="left"><span class="ic left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v2"/></svg></span>왼쪽 돌기</button>
+        <button class="block-btn" data-add="right"><span class="ic right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5v2"/></svg></span>오른쪽 돌기</button>
+        <button class="block-btn" data-add="loop"><span class="ic loop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></span>반복하기</button>
+      </div>
+      <div class="program empty-state" id="program">
+        <div class="placeholder" id="placeholder">위 블록을 눌러서 드론에게 줄 명령을 차례대로 쌓아보세요.<br>예) 앞으로 → 오른쪽 돌기 → 앞으로 …</div>
+      </div>
+      <div class="toolbar-row">
+        <span id="stepCount">명령 0개</span>
+        <span>드론은 지금 바라보는 방향으로 "앞으로" 움직여요</span>
+      </div>
+      <div class="controls">
+        <button class="btn primary" id="runBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>실행하기</button>
+        <button class="btn secondary" id="resetBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.3 2.6L3 8"/><path d="M3 3v5h5"/></svg>되돌리기</button>
+        <button class="btn secondary" id="clearBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>모두 비우기</button>
+      </div>
+      <div class="controls" style="margin-top:10px">
+        <button class="btn secondary" id="newMapBtn" style="flex:1; justify-content:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>새 미션 (보물 위치 바꾸기)</button>
+      </div>
+      <div class="message" id="message" role="status" aria-live="polite"></div>
+    </section>
+  </div>
+</div>
+<script>
+(() => {
+  "use strict";
+  const DIRS = [
+    { name: "위쪽",   dx: 0,  dy: -1, deg: 0   },
+    { name: "오른쪽", dx: 1,  dy: 0,  deg: 90  },
+    { name: "아래쪽", dx: 0,  dy: 1,  deg: 180 },
+    { name: "왼쪽",   dx: -1, dy: 0,  deg: 270 },
+  ];
+  const state = { size: 5, walls: new Set(), start: { x: 0, y: 0 }, goal: { x: 4, y: 4 }, startDir: 0, program: [], level: 1, treasures: 0, tries: 0, running: false };
+  const gridEl = document.getElementById("grid");
+  const programEl = document.getElementById("program");
+  const placeholderEl = document.getElementById("placeholder");
+  const messageEl = document.getElementById("message");
+  const stepCountEl = document.getElementById("stepCount");
+  const headingArrow = document.getElementById("headingArrow");
+  const headingText = document.getElementById("headingText");
+  const el = (id) => document.getElementById(id);
+  const SVG = {
+    drone: `<svg viewBox="0 0 24 24" fill="none" stroke="#dbeafe" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="5.5" r="2.4" fill="#1e3a8a"/><circle cx="18.5" cy="5.5" r="2.4" fill="#1e3a8a"/><circle cx="5.5" cy="18.5" r="2.4" fill="#1e3a8a"/><circle cx="18.5" cy="18.5" r="2.4" fill="#1e3a8a"/><rect x="8.5" y="8.5" width="7" height="7" rx="2" fill="#3b82f6" stroke="#93c5fd"/><path d="M12 9.5 v-1.2" stroke="#fbbf24" stroke-width="2.2"/><path d="M7 7l1.8 1.8M17 7l-1.8 1.8M7 17l1.8-1.8M17 17l-1.8-1.8"/></svg>`,
+    treasure: `<svg viewBox="0 0 24 24" fill="#f5b400" stroke="#b47d00" stroke-width="0.8" stroke-linejoin="round"><path d="M12 2l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 16.9 5.1 19.9l1.1-6.47L1.5 8.85l6.5-.95z"/></svg>`,
+    wall: `<svg viewBox="0 0 24 24" fill="none" stroke="#c9a37a" stroke-width="1.4" stroke-linejoin="round"><rect x="3" y="5" width="18" height="5" rx="1" fill="#4a3b30"/><rect x="3" y="14" width="18" height="5" rx="1" fill="#4a3b30"/><path d="M8 5v5M15 5v5M11 14v5"/></svg>`,
+  };
+  const BLOCK = {
+    forward: { label: "앞으로", cls: "fwd",   svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>` },
+    left:    { label: "왼쪽 돌기", cls: "left", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 5 5v2"/></svg>` },
+    right:   { label: "오른쪽 돌기", cls: "right", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0-5 5v2"/></svg>` },
+    loop:    { label: "반복하기", cls: "loop", svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>` },
+  };
+  const key = (x, y) => `${x},${y}`;
+  const inBounds = (x, y) => x >= 0 && y >= 0 && x < state.size && y < state.size;
+  const isWall = (x, y) => state.walls.has(key(x, y));
+  const randInt = (n) => Math.floor(Math.random() * n);
+  function solvable(start, goal, walls, size) {
+    if (walls.has(key(goal.x, goal.y)) || walls.has(key(start.x, start.y))) return false;
+    const seen = new Set([key(start.x, start.y)]);
+    const q = [start];
+    while (q.length) {
+      const { x, y } = q.shift();
+      if (x === goal.x && y === goal.y) return true;
+      for (const d of DIRS) {
+        const nx = x + d.dx, ny = y + d.dy;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        const k = key(nx, ny);
+        if (seen.has(k) || walls.has(k)) continue;
+        seen.add(k); q.push({ x: nx, y: ny });
+      }
+    }
+    return false;
+  }
+  function shortestLen(start, goal, walls, size) {
+    const seen = new Set([key(start.x, start.y)]);
+    const q = [{ x: start.x, y: start.y, d: 0 }];
+    while (q.length) {
+      const { x, y, d } = q.shift();
+      if (x === goal.x && y === goal.y) return d;
+      for (const dir of DIRS) {
+        const nx = x + dir.dx, ny = y + dir.dy;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        const k = key(nx, ny);
+        if (seen.has(k) || walls.has(k)) continue;
+        seen.add(k); q.push({ x: nx, y: ny, d: d + 1 });
+      }
+    }
+    return Infinity;
+  }
+  function generateMap() {
+    const level = state.level;
+    const size = Math.min(4 + Math.floor((level - 1) / 2), 7);
+    state.size = size;
+    const total = size * size;
+    const maxWalls = Math.min(Math.floor(total * 0.22) + Math.floor(level / 2), total - size - 2);
+    let best = null;
+    for (let attempt = 0; attempt < 200; attempt++) {
+      const start = { x: randInt(size), y: randInt(size) };
+      let goal;
+      do { goal = { x: randInt(size), y: randInt(size) }; } while (goal.x === start.x && goal.y === start.y);
+      const manhattan = Math.abs(start.x - goal.x) + Math.abs(start.y - goal.y);
+      if (manhattan < Math.min(size, 3)) continue;
+      const walls = new Set();
+      const wallCount = randInt(maxWalls + 1);
+      let guard = 0;
+      while (walls.size < wallCount && guard < 400) {
+        guard++;
+        const wx = randInt(size), wy = randInt(size);
+        const k = key(wx, wy);
+        if ((wx === start.x && wy === start.y) || (wx === goal.x && wy === goal.y)) continue;
+        walls.add(k);
+      }
+      if (!solvable(start, goal, walls, size)) continue;
+      const len = shortestLen(start, goal, walls, size);
+      const candidate = { start, goal, walls, len, wallCount: walls.size };
+      if (!best || candidate.len > best.len) best = candidate;
+      if (best.len >= manhattan + 2 && best.wallCount >= Math.min(wallCount, 2)) break;
+    }
+    if (!best) { best = { start: { x: 0, y: 0 }, goal: { x: size - 1, y: size - 1 }, walls: new Set() }; }
+    state.start = best.start;
+    state.goal = best.goal;
+    state.walls = best.walls;
+    state.startDir = randInt(4);
+  }
+  let droneEl = null;
+  function renderGrid() {
+    const size = state.size;
+    gridEl.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+    gridEl.innerHTML = "";
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.dataset.x = x; cell.dataset.y = y;
+        if (isWall(x, y)) { cell.classList.add("wall"); cell.innerHTML = SVG.wall; cell.setAttribute("aria-label", "장애물"); }
+        else if (x === state.goal.x && y === state.goal.y) { cell.classList.add("goal"); cell.innerHTML = SVG.treasure; cell.setAttribute("aria-label", "보물"); }
+        else if (x === state.start.x && y === state.start.y) { cell.classList.add("start"); cell.setAttribute("aria-label", "출발점"); }
+        gridEl.appendChild(cell);
+      }
+    }
+    droneEl = document.createElement("div");
+    droneEl.className = "drone";
+    droneEl.innerHTML = SVG.drone;
+    droneEl.setAttribute("aria-label", "드론");
+    gridEl.appendChild(droneEl);
+    placeDrone(state.start.x, state.start.y, state.startDir, false);
+  }
+  function placeDrone(x, y, dir, animate = true) {
+    const size = state.size;
+    const rect = gridEl.getBoundingClientRect();
+    const gap = parseFloat(getComputedStyle(gridEl).gap) || 6;
+    const cellW = (rect.width - gap * (size - 1)) / size;
+    const cellH = (rect.height - gap * (size - 1)) / size;
+    const px = x * (cellW + gap);
+    const py = y * (cellH + gap);
+    droneEl.style.width = cellW * 0.78 + "px";
+    droneEl.style.height = cellH * 0.78 + "px";
+    if (!animate) {
+      const prev = droneEl.style.transition;
+      droneEl.style.transition = "none";
+      droneEl.style.left = px + cellW * 0.11 + "px";
+      droneEl.style.top = py + cellH * 0.11 + "px";
+      droneEl.style.transform = `rotate(${DIRS[dir].deg}deg)`;
+      void droneEl.offsetHeight;
+      droneEl.style.transition = prev;
+    } else {
+      droneEl.style.left = px + cellW * 0.11 + "px";
+      droneEl.style.top = py + cellH * 0.11 + "px";
+      droneEl.style.transform = `rotate(${DIRS[dir].deg}deg)`;
+    }
+  }
+  function updateHeading(dir) {
+    headingText.textContent = DIRS[dir].name;
+    headingArrow.style.transform = `rotate(${DIRS[dir].deg}deg)`;
+  }
+  function renderProgram() {
+    programEl.innerHTML = "";
+    if (state.program.length === 0) {
+      programEl.classList.add("empty-state");
+      programEl.appendChild(placeholderEl);
+      placeholderEl.style.display = "";
+      stepCountEl.textContent = "명령 0개";
+      return;
+    }
+    programEl.classList.remove("empty-state");
+    placeholderEl.style.display = "none";
+    state.program.forEach((cmd, i) => {
+      const b = BLOCK[cmd.type];
+      const item = document.createElement("div");
+      item.className = "prog-item";
+      item.dataset.index = i;
+      let loopControl = "";
+      if (cmd.type === "loop") {
+        loopControl = `<div class="loop-count" title="반복 횟수"><button class="loop-dec" aria-label="반복 줄이기">−</button><span class="n">${cmd.count}회</span><button class="loop-inc" aria-label="반복 늘리기">+</button></div>`;
+      }
+      item.innerHTML = `<span class="num">${i + 1}</span><span class="ic ${b.cls}">${b.svg}</span><span class="label">${b.label}${cmd.type === "loop" ? " (다음 명령 묶음)" : ""}</span>${loopControl}<button class="remove" aria-label="이 명령 삭제"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+      item.querySelector(".remove").addEventListener("click", () => { state.program.splice(i, 1); renderProgram(); });
+      if (cmd.type === "loop") {
+        item.querySelector(".loop-inc").addEventListener("click", () => { cmd.count = Math.min(cmd.count + 1, 9); renderProgram(); });
+        item.querySelector(".loop-dec").addEventListener("click", () => { cmd.count = Math.max(cmd.count - 1, 2); renderProgram(); });
+      }
+      programEl.appendChild(item);
+    });
+    stepCountEl.textContent = `명령 ${state.program.length}개`;
+  }
+  function addBlock(type) {
+    if (state.running) return;
+    if (state.program.length >= 30) { showMessage("info", "명령은 최대 30개까지 쌓을 수 있어요."); return; }
+    if (type === "loop") { state.program.push({ type: "loop", count: 2 }); }
+    else { state.program.push({ type }); }
+    renderProgram();
+  }
+  function flatten(program) {
+    const out = [];
+    for (let i = 0; i < program.length; i++) {
+      const cmd = program[i];
+      if (cmd.type === "loop") {
+        const next = program[i + 1];
+        if (next && next.type !== "loop") {
+          for (let r = 0; r < cmd.count; r++) out.push({ type: next.type, progIndex: i + 1 });
+          i++;
+        }
+      } else { out.push({ type: cmd.type, progIndex: i }); }
+    }
+    return out;
+  }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  async function run() {
+    if (state.running) return;
+    if (state.program.length === 0) { showMessage("info", "먼저 명령 블록을 쌓아주세요!"); return; }
+    state.running = true;
+    state.tries++;
+    el("statTries").textContent = state.tries;
+    setControlsEnabled(false);
+    hideMessage();
+    clearTrails();
+    const steps = flatten(state.program);
+    let x = state.start.x, y = state.start.y, dir = state.startDir;
+    placeDrone(x, y, dir, false);
+    updateHeading(dir);
+    const stepDelay = reduceMotion ? 120 : 360;
+    for (let s = 0; s < steps.length; s++) {
+      const step = steps[s];
+      highlightProgram(step.progIndex);
+      await sleep(reduceMotion ? 60 : 120);
+      if (step.type === "forward") {
+        const nx = x + DIRS[dir].dx;
+        const ny = y + DIRS[dir].dy;
+        if (!inBounds(nx, ny)) { await bump(dir); return finish(false, "앗! 드론이 격자 밖으로 나가려고 했어요. 방향을 다시 확인해 보세요."); }
+        if (isWall(nx, ny)) { await bump(dir); return finish(false, "쿵! 장애물에 부딪혔어요. 장애물을 피해서 돌아가 볼까요?"); }
+        markTrail(x, y);
+        x = nx; y = ny;
+        placeDrone(x, y, dir, true);
+        await sleep(stepDelay);
+        if (x === state.goal.x && y === state.goal.y) { return finish(true); }
+      } else if (step.type === "left") {
+        dir = (dir + 3) % 4;
+        placeDrone(x, y, dir, true);
+        updateHeading(dir);
+        await sleep(reduceMotion ? 120 : 300);
+      } else if (step.type === "right") {
+        dir = (dir + 1) % 4;
+        placeDrone(x, y, dir, true);
+        updateHeading(dir);
+        await sleep(reduceMotion ? 120 : 300);
+      }
+    }
+    if (x === state.goal.x && y === state.goal.y) { return finish(true); }
+    finish(false, "명령을 다 썼지만 아직 보물에 닿지 못했어요. 명령을 더 추가해 볼까요?");
+  }
+  function highlightProgram(progIndex) {
+    programEl.querySelectorAll(".prog-item").forEach((it) => { it.classList.toggle("running", Number(it.dataset.index) === progIndex); });
+  }
+  function markTrail(x, y) {
+    const c = gridEl.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+    if (c && !c.classList.contains("start") && !c.classList.contains("goal")) { c.classList.add("path-trail"); }
+  }
+  function clearTrails() { gridEl.querySelectorAll(".cell.path-trail").forEach((c) => c.classList.remove("path-trail")); }
+  async function bump(dir) {
+    if (reduceMotion) { await sleep(200); return; }
+    const d = DIRS[dir];
+    droneEl.style.setProperty("--bx", d.dx * 8 + "px");
+    droneEl.style.setProperty("--by", d.dy * 8 + "px");
+    droneEl.style.setProperty("--rot", d.deg + "deg");
+    droneEl.classList.add("bump");
+    await sleep(380);
+    droneEl.classList.remove("bump");
+  }
+  function finish(success, errMsg) {
+    programEl.querySelectorAll(".prog-item").forEach((it) => it.classList.remove("running"));
+    state.running = false;
+    setControlsEnabled(true);
+    if (success) {
+      droneEl.style.setProperty("--rot", DIRS[0].deg + "deg");
+      spawnTreasurePop();
+      if (!reduceMotion) { droneEl.classList.add("win"); setTimeout(() => droneEl.classList.remove("win"), 700); }
+      state.treasures++;
+      el("statTreasure").textContent = state.treasures;
+      confetti();
+      showMessage("success", "성공! 보물을 찾았어요! '다음 레벨'로 더 어려운 미션에 도전해 보세요.");
+      showNextLevel();
+    } else {
+      showMessage("error", errMsg || "다시 시도해 보세요!");
+    }
+  }
+  function spawnTreasurePop() {
+    const cell = gridEl.querySelector(`.cell[data-x="${state.goal.x}"][data-y="${state.goal.y}"]`);
+    if (!cell) return;
+    const pop = document.createElement("div");
+    pop.className = "treasure-pop";
+    pop.style.width = cell.offsetWidth * 0.7 + "px";
+    pop.style.height = cell.offsetHeight * 0.7 + "px";
+    pop.style.left = cell.offsetLeft + cell.offsetWidth * 0.15 + "px";
+    pop.style.top = cell.offsetTop + cell.offsetHeight * 0.15 + "px";
+    pop.innerHTML = SVG.treasure;
+    gridEl.appendChild(pop);
+    setTimeout(() => pop.remove(), 900);
+  }
+  function showNextLevel() {
+    const runBtn = el("runBtn");
+    runBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> 다음 레벨`;
+    runBtn.dataset.mode = "next";
+  }
+  function resetRunButton() {
+    const runBtn = el("runBtn");
+    runBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 실행하기`;
+    runBtn.dataset.mode = "run";
+  }
+  function nextLevel() { state.level++; el("statLevel").textContent = state.level; newMission(); }
+  function newMission() {
+    generateMap();
+    renderGrid();
+    updateHeading(state.startDir);
+    hideMessage();
+    resetRunButton();
+    showMessage("info", "새로운 보물 위치가 정해졌어요! 드론의 시작 방향도 확인하세요.");
+    setTimeout(hideMessage, 2600);
+  }
+  function showMessage(type, text) {
+    messageEl.className = `message show ${type}`;
+    const icons = {
+      success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+      error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>`,
+      info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
+    };
+    messageEl.innerHTML = `${icons[type] || ""}<span>${text}</span>`;
+  }
+  function hideMessage() { messageEl.className = "message"; }
+  function setControlsEnabled(enabled) {
+    ["runBtn", "resetBtn", "clearBtn", "newMapBtn"].forEach((id) => { el(id).disabled = !enabled; });
+    document.querySelectorAll(".block-btn").forEach((b) => (b.disabled = !enabled));
+    document.querySelectorAll(".prog-item .remove, .prog-item .loop-inc, .prog-item .loop-dec").forEach((b) => (b.disabled = !enabled));
+  }
+  function confetti() {
+    if (reduceMotion) return;
+    const colors = ["#10b981", "#f5b400", "#3b82f6", "#ec4899", "#8b5cf6"];
+    for (let i = 0; i < 40; i++) {
+      const c = document.createElement("div");
+      c.className = "confetti";
+      c.style.left = Math.random() * 100 + "vw";
+      c.style.background = colors[randInt(colors.length)];
+      c.style.animation = `fall ${1 + Math.random() * 1.2}s ${Math.random() * 0.3}s ease-in forwards`;
+      c.style.transform = `rotate(${Math.random() * 360}deg)`;
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 2800);
+    }
+  }
+  document.querySelectorAll(".block-btn").forEach((btn) => { btn.addEventListener("click", () => addBlock(btn.dataset.add)); });
+  el("runBtn").addEventListener("click", () => { if (el("runBtn").dataset.mode === "next") { nextLevel(); } else { run(); } });
+  el("resetBtn").addEventListener("click", () => {
+    if (state.running) return;
+    clearTrails();
+    placeDrone(state.start.x, state.start.y, state.startDir, false);
+    updateHeading(state.startDir);
+    resetRunButton();
+    hideMessage();
+  });
+  el("clearBtn").addEventListener("click", () => {
+    if (state.running) return;
+    state.program = [];
+    renderProgram();
+    resetRunButton();
+    hideMessage();
+  });
+  el("newMapBtn").addEventListener("click", () => { if (state.running) return; newMission(); });
+  let resizeTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { placeDrone(state.start.x, state.start.y, state.startDir, false); }, 120);
+  });
+  function init() {
+    el("statLevel").textContent = state.level;
+    el("statTreasure").textContent = state.treasures;
+    el("statTries").textContent = state.tries;
+    generateMap();
+    renderGrid();
+    updateHeading(state.startDir);
+    renderProgram();
+    requestAnimationFrame(() => placeDrone(state.start.x, state.start.y, state.startDir, false));
+  }
+  init();
+})();
+</script>
+</body>
+</html>
